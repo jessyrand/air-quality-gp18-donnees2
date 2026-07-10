@@ -44,3 +44,40 @@ def fetch_history_hourly_aqi(
     }
     return client.weather_api(url, params=params)
 
+
+def _find_city(
+    cities: list[City], latitude: float, longitude: float
+) -> City | None:
+    for city in cities:
+        if city.match_coordinates(latitude, longitude):
+            return city
+    return None
+
+
+def export_to_csv(responses: list, cities: list[City], output_dir: str | None = None):
+    out_dir = output_dir or OUTPUT_DIR
+    os.makedirs(out_dir, exist_ok=True)
+
+    for response in responses:
+        city = _find_city(cities, response.Latitude(), response.Longitude())
+        city_label = city.name if city else f"{response.Latitude()}_{response.Longitude()}"
+
+        hourly = response.Hourly()
+
+        hourly_data = {
+            "date": pd.date_range(
+                start=pd.to_datetime(hourly.Time(), unit="s", utc=True),
+                end=pd.to_datetime(hourly.TimeEnd(), unit="s", utc=True),
+                freq=pd.Timedelta(seconds=hourly.Interval()),
+                inclusive="left",
+            )
+        }
+
+        for i, var_name in enumerate(HOURLY_VARIABLES):
+            hourly_data[var_name] = hourly.Variables(i).ValuesAsNumpy()
+
+        df = pd.DataFrame(data=hourly_data)
+
+        csv_path = os.path.join(out_dir, f"{city_label.lower().replace(' ', '_')}.csv")
+        df.to_csv(csv_path, index=False)
+        print(f"Exported {len(df)} rows to {csv_path}")
