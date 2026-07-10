@@ -1,0 +1,7 @@
+[project]
+name = "air-quality-gp18-donnees2"
+version = "0.1.0"
+description = "A simple ETL tool for air quality"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
