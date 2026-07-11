@@ -19,7 +19,7 @@ HOURLY_VARIABLES = [
     "us_aqi",
 ]
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "output")
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
 
 
 def build_client() -> openmeteo_requests.Client:

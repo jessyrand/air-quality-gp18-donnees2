@@ -46,6 +46,6 @@ def export_to_csv(responses: list, cities: list[City], output_dir: str | None = 
 
         df = pd.DataFrame(data=hourly_data)
 
-        csv_path = os.path.join(out_dir, f"{city_label.lower().replace(' ', '_')}.csv")
+        csv_path = os.path.join(out_dir,f"{city_label.lower().replace(' ', '_')}.csv")
         df.to_csv(csv_path, index=False)
         print(f"Exported {len(df)} rows to {csv_path}")
