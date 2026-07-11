@@ -44,6 +44,7 @@ def export_to_csv(
 
         for i, var_name in enumerate(HOURLY_VARIABLES):
             hourly_data[var_name] = hourly.Variables(i).ValuesAsNumpy()[0]
+        hourly_data["country"] = city.country if city is not None else None
 
         df = pd.DataFrame([hourly_data])
 
