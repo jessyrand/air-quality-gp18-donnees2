@@ -22,7 +22,7 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     n_before = len(df)
     df = df.dropna(subset=["date"])
     if n_before != len(df):
-        print(f"{n_before - len(df)} lines without dates deleteds")
+        print(f"{n_before - len(df)} undated lines deleted")
 
     n_before = len(df)
     df = df.drop_duplicates()
@@ -30,6 +30,12 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         print(f"{n_before - len(df)} duplicates removed")
 
     df = df.sort_values("date").reset_index(drop=True)
+
+    for col in numeric_cols:
+        n_negatives = (df[col] < 0).sum()
+        if n_negatives > 0:
+            print(f"{n_negatives} Negative values detected in ‘{col}’ set to NaN")
+            df.loc[df[col] < 0, col] = np.nan
 
     missing_before = df[numeric_cols].isna().sum()
     missing_before = missing_before[missing_before > 0]
@@ -40,7 +46,6 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.set_index("date")
     df[numeric_cols] = df[numeric_cols].interpolate(method="time", limit_direction="both")
     df = df.reset_index()
-
     df[numeric_cols] = df[numeric_cols].ffill().bfill()
 
     if "country" in df.columns and df["country"].isna().any():
