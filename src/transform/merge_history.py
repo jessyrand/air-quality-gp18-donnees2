@@ -34,7 +34,7 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     for col in numeric_cols:
         n_negatives = (df[col] < 0).sum()
         if n_negatives > 0:
-            print(f"{n_negatives} Negative values detected in ‘{col}’ set to NaN")
+            print(f"{n_negatives} negative values detected in ‘{col}’ set to NaN")
             df.loc[df[col] < 0, col] = np.nan
 
     missing_before = df[numeric_cols].isna().sum()
