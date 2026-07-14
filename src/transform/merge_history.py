@@ -52,3 +52,14 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df["country"] = df["country"].ffill().bfill()
 
     return df
+
+def merge_history_dataframe(old_df: pd.DataFrame,new_df: pd.DataFrame,) -> pd.DataFrame:
+    old_df = clean_dataframe(old_df)
+    new_df = clean_dataframe(new_df)
+
+    merged_df = pd.concat([old_df, new_df], ignore_index=True)
+    merged_df = merged_df.drop_duplicates(subset=["date"], keep="last")
+    merged_df = merged_df.sort_values("date")
+    merged_df = merged_df.reset_index(drop=True)
+
+    return merged_df
