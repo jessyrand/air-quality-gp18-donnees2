@@ -53,3 +53,17 @@ def clean_last_hourly_row(df: pd.DataFrame) -> pd.DataFrame:
     df = df.reset_index(drop=True)
 
     return df
+
+def transform_last_hourly_aqi(
+    responses: list,
+    cities: list[City],
+) -> list[tuple[str, pd.DataFrame]]:
+    transformed = []
+
+    for response in responses:
+        city_label, row = _build_row(response, cities)
+        df = pd.DataFrame([row])
+        df = clean_last_hourly_row(df)
+        transformed.append((city_label, df))
+
+    return transformed
