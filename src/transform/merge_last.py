@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from ..model.city import City
-from .common import HOURLY_VARIABLES, find_city
+from ..extract.common import HOURLY_VARIABLES, find_city
 
 NON_NUMERIC_COLUMNS = {"date", "country", "city"}
 
