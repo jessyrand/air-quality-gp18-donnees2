@@ -6,11 +6,16 @@ from dotenv import load_dotenv
 
 from ..extract.common import HOURLY_VARIABLES
 from ..model.city import City
+from ..model.city import CITIES
 
 load_dotenv()
 
+DATA_DIR = Path(__file__).parent.parent / "data"
+CLEAN_FILE = DATA_DIR / "clean" / "clean.csv"
+
+OUTPUT_DIR = DATA_DIR / "warehouse"
+
 MEASURE_COLUMNS = HOURLY_VARIABLES
-OUTPUT_DIR = Path("warehouse")
 
 
 def build_dim_city(cities: list[City]) -> pd.DataFrame:
@@ -52,6 +57,12 @@ def build_fact_aqi(clean_df: pd.DataFrame, dim_city: pd.DataFrame, dim_time: pd.
         right_on="city_name",
         how="left",
     )
+    missing = fact[fact["city_id"].isna()]
+
+    if not missing.empty:
+        print("\n=== Missing city_id ===")
+        print(missing[["city", "country", "date"]])
+    
     fact = fact.merge(
         dim_time[["time_id", "full_datetime"]],
         left_on="date",
@@ -152,3 +163,23 @@ def build_warehouse(
     if to_postgres:
         load_to_postgres(dim_city, dim_time, fact)
     return dim_city, dim_time, fact
+
+def main():
+    if not CLEAN_FILE.exists():
+        raise FileNotFoundError(
+            f"{CLEAN_FILE} not found. Run build_clean.py first."
+        )
+
+    clean_df = pd.read_csv(
+        CLEAN_FILE,
+        parse_dates=["date"],
+    )
+
+    build_warehouse(
+        clean_df=clean_df,
+        cities=CITIES,
+    )
+
+
+if __name__ == "__main__":
+    main()

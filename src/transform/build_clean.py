@@ -94,3 +94,10 @@ def rebuild_clean() -> pd.DataFrame:
     print(f"[clean] {len(clean)} rows written to {output_file}")
 
     return clean
+
+def main():
+    rebuild_clean()
+
+
+if __name__ == "__main__":
+    main()
