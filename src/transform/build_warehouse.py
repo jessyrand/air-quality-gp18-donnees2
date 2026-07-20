@@ -6,41 +6,16 @@ from dotenv import load_dotenv
 
 from ..extract.common import HOURLY_VARIABLES
 from ..model.city import City
+from ..model.city import CITIES
 
 load_dotenv()
 
+DATA_DIR = Path(__file__).parent.parent / "data"
+CLEAN_FILE = DATA_DIR / "clean" / "clean.csv"
+
+OUTPUT_DIR = DATA_DIR / "warehouse"
+
 MEASURE_COLUMNS = HOURLY_VARIABLES
-OUTPUT_DIR = Path("warehouse")
-
-
-def build_long_dataframe(
-    history_by_city: dict[str, pd.DataFrame],
-    last_hour_rows: list[tuple[str, pd.DataFrame]],
-) -> pd.DataFrame:
-    frames = []
-
-    for city_name, df in history_by_city.items():
-        df = df.copy()
-        df["city"] = city_name
-        frames.append(df)
-
-    for city_name, df in last_hour_rows:
-        df = df.copy()
-        df["city"] = city_name
-        frames.append(df)
-
-    if not frames:
-        raise ValueError("No data provided (history_by_city and last_hour_rows are both empty)")
-
-    long_df = pd.concat(frames, ignore_index=True)
-
-    n_before = len(long_df)
-    long_df = long_df.drop_duplicates(subset=["city", "date"], keep="last")
-    if n_before != len(long_df):
-        print(f"[warehouse] {n_before - len(long_df)} (city, date) duplicates removed")
-
-    long_df = long_df.sort_values(["city", "date"]).reset_index(drop=True)
-    return long_df
 
 
 def build_dim_city(cities: list[City]) -> pd.DataFrame:
@@ -59,8 +34,8 @@ def build_dim_city(cities: list[City]) -> pd.DataFrame:
     return dim_city
 
 
-def build_dim_time(long_df: pd.DataFrame) -> pd.DataFrame:
-    unique_dates = pd.to_datetime(long_df["date"].dropna().unique())
+def build_dim_time(clean_df: pd.DataFrame) -> pd.DataFrame:
+    unique_dates = pd.to_datetime(clean_df["date"].dropna().unique())
     unique_dates = pd.Series(unique_dates).sort_values().reset_index(drop=True)
 
     dim_time = pd.DataFrame({"full_datetime": unique_dates})
@@ -75,13 +50,19 @@ def build_dim_time(long_df: pd.DataFrame) -> pd.DataFrame:
     return dim_time
 
 
-def build_fact_aqi(long_df: pd.DataFrame, dim_city: pd.DataFrame, dim_time: pd.DataFrame) -> pd.DataFrame:
-    fact = long_df.merge(
+def build_fact_aqi(clean_df: pd.DataFrame, dim_city: pd.DataFrame, dim_time: pd.DataFrame) -> pd.DataFrame:
+    fact = clean_df.merge(
         dim_city[["city_id", "city_name"]],
         left_on="city",
         right_on="city_name",
         how="left",
     )
+    missing = fact[fact["city_id"].isna()]
+
+    if not missing.empty:
+        print("\n=== Missing city_id ===")
+        print(missing[["city", "country", "date"]])
+    
     fact = fact.merge(
         dim_time[["time_id", "full_datetime"]],
         left_on="date",
@@ -168,17 +149,37 @@ def load_to_postgres(dim_city: pd.DataFrame, dim_time: pd.DataFrame, fact: pd.Da
 
 
 def build_warehouse(
-    history_by_city: dict[str, pd.DataFrame],
-    last_hour_rows: list[tuple[str, pd.DataFrame]],
+    clean_df: pd.DataFrame,
     cities: list[City],
     to_postgres: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    long_df = build_long_dataframe(history_by_city, last_hour_rows)
+
     dim_city = build_dim_city(cities)
-    dim_time = build_dim_time(long_df)
-    fact = build_fact_aqi(long_df, dim_city, dim_time)
+    dim_time = build_dim_time(clean_df)
+    fact = build_fact_aqi(clean_df, dim_city, dim_time)
+
     check_coherence(fact, dim_city, dim_time)
     export_warehouse(dim_city, dim_time, fact)
     if to_postgres:
         load_to_postgres(dim_city, dim_time, fact)
     return dim_city, dim_time, fact
+
+def main():
+    if not CLEAN_FILE.exists():
+        raise FileNotFoundError(
+            f"{CLEAN_FILE} not found. Run build_clean.py first."
+        )
+
+    clean_df = pd.read_csv(
+        CLEAN_FILE,
+        parse_dates=["date"],
+    )
+
+    build_warehouse(
+        clean_df=clean_df,
+        cities=CITIES,
+    )
+
+
+if __name__ == "__main__":
+    main()

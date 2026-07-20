@@ -1,9 +1,12 @@
 import os
+from pathlib import Path
 
 import pandas as pd
 
 from ..model.city import City
 from .common import HOURLY_VARIABLES, build_client, find_city, resolve_output_dir
+from datetime import datetime
+from ..model.city import CITIES
 
 API_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
@@ -46,6 +49,25 @@ def export_to_csv(responses: list, cities: list[City], output_dir: str | None = 
 
         df = pd.DataFrame(data=hourly_data)
 
-        csv_path = os.path.join(out_dir,f"{city_label.lower().replace(' ', '_')}.csv")
+        filename = f"{city_label.lower().replace(' ', '_')}_history.csv"
+        csv_path = os.path.join(out_dir, filename)
+
         df.to_csv(csv_path, index=False)
         print(f"Exported {len(df)} rows to {csv_path}")
+
+def main():
+    responses = fetch_history_hourly_aqi(
+        cities=CITIES,
+        start="2026-07-01",
+        end=datetime.now().strftime("%Y-%m-%d"),
+    )
+
+    export_to_csv(
+        responses=responses,
+        cities=CITIES,
+        output_dir=Path(__file__).parent.parent / "data" / "raw" / "history",
+    )
+
+
+if __name__ == "__main__":
+    main()
