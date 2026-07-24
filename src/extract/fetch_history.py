@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..model.city import City
-from .common import HOURLY_VARIABLES, build_client, find_city, resolve_output_dir
+from src.model.city import City
+from src.extract.common import HOURLY_VARIABLES, build_client, find_city, resolve_output_dir
 from datetime import datetime
-from ..model.city import CITIES
+from src.model.city import CITIES
 
 API_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
@@ -54,6 +54,8 @@ def export_to_csv(responses: list, cities: list[City], output_dir: str | None = 
 
         df.to_csv(csv_path, index=False)
         print(f"Exported {len(df)} rows to {csv_path}")
+
+    print("History backfill completed.")
 
 def main():
     responses = fetch_history_hourly_aqi(
