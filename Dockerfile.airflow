@@ -6,13 +6,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uvx /usr/local/bin/uvx
 
 USER airflow
-
 WORKDIR /opt/airflow
 
 COPY --chown=airflow:root pyproject.toml uv.lock ./
 
-RUN uv sync --frozen --no-dev
+RUN uv export --frozen --no-dev --format requirements-txt > requirements.txt \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=airflow:root . .
-
-ENV PATH="/opt/airflow/.venv/bin:$PATH"

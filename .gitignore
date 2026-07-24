@@ -3,3 +3,19 @@
 data/
 .env
 config/
+
+# Airflow
+logs/
+
+# Build logs
+build.log
+
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
