@@ -1,0 +1,11 @@
+services:
+  etl:
+    build: .
+    container_name: air-quality-etl
+
+    working_dir: /app
+
+    volumes:
+      - .:/app
+
+    command: python --version
