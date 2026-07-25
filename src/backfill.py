@@ -5,7 +5,7 @@ import pandas as pd
 from .model.city import CITIES
 from .transform.build_warehouse import build_warehouse
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 CLEAN_FILE = DATA_DIR / "clean" / "clean.csv"
 
 
