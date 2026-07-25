@@ -142,6 +142,7 @@ def load_to_postgres(dim_city: pd.DataFrame, dim_time: pd.DataFrame, fact: pd.Da
     from sqlalchemy import text
 
     engine = engine or get_engine()
+    initialize_database(engine)
 
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE TABLE fact_aqi, dim_time, dim_city RESTART IDENTITY CASCADE"))
@@ -174,6 +175,24 @@ def build_warehouse(
     if to_postgres:
         load_to_postgres(dim_city, dim_time, fact)
     return dim_city, dim_time, fact
+
+def initialize_database(engine=None) -> None:
+    from sqlalchemy import text
+
+    engine = engine or get_engine()
+
+    init_file = Path(__file__).parent.parent.parent / "db" / "init.sql"
+
+    if not init_file.exists():
+        raise FileNotFoundError(f"{init_file} not found")
+
+    with open(init_file, "r", encoding="utf-8") as f:
+        sql = f.read()
+
+    with engine.begin() as conn:
+        conn.execute(text(sql))
+
+    print("[warehouse] Database schema initialized")
 
 def main():
     if not CLEAN_FILE.exists():

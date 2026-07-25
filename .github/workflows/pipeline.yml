@@ -1,0 +1,38 @@
+name: Air Quality Pipeline
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 * * * *"
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run fetch_last
+        run: python -m src.extract.fetch_last
+
+      - name: Build clean dataset
+        run: python -m src.transform.build_clean
+
+      - name: Build warehouse
+        run: python -m src.transform.build_warehouse
