@@ -118,13 +118,24 @@ def export_warehouse(
 def get_engine():
     from sqlalchemy import create_engine
 
-    host = os.getenv("WAREHOUSE_POSTGRES_HOST", "warehouse-db")
-    port = os.getenv("WAREHOUSE_POSTGRES_PORT", "5432")
-    user = os.getenv("WAREHOUSE_POSTGRES_USER")
-    password = os.getenv("WAREHOUSE_POSTGRES_PASSWORD")
-    db = os.getenv("WAREHOUSE_POSTGRES_DB")
-    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
-    return create_engine(url)
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL environment variable is not defined."
+        )
+
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace(
+            "postgresql://",
+            "postgresql+psycopg2://",
+            1,
+        )
+
+    return create_engine(
+        database_url,
+        pool_pre_ping=True,
+    )
 
 
 def load_to_postgres(dim_city: pd.DataFrame, dim_time: pd.DataFrame, fact: pd.DataFrame, engine=None) -> None:
