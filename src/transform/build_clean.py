@@ -4,7 +4,7 @@ import pandas as pd
 
 from .merge_history import clean_dataframe, load_history_csv
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
 RAW_DIR = DATA_DIR / "raw"
 CLEAN_DIR = DATA_DIR / "clean"

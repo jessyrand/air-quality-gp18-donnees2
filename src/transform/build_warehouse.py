@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 load_dotenv()
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
 CLEAN_FILE = DATA_DIR / "clean" / "clean.csv"
 
 OUTPUT_DIR = DATA_DIR / "warehouse"

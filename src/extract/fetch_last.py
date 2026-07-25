@@ -10,6 +10,7 @@ from ..model.city import CITIES
 
 API_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 def fetch_last_hourly_aqi(cities: list[City]) -> list:
     from .common import build_client
@@ -62,7 +63,7 @@ def main():
     export_to_csv(
         responses=responses,
         cities=CITIES,
-        output_dir=Path(__file__).parent.parent / "data" / "raw" / "hourly",
+        output_dir=DATA_DIR / "raw" / "hourly",
     )
 
 
