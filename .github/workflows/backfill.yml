@@ -28,5 +28,5 @@ jobs:
       - name: Build clean dataset
         run: uv run python -m src.transform.build_clean
 
-      - name: Build warehouse
-        run: uv run python -m src.transform.build_warehouse
+      - name: Build warehouse (full refresh)
+        run: uv run python -m src.backfill
