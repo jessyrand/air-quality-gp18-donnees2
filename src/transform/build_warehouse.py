@@ -118,11 +118,11 @@ def export_warehouse(
 def get_engine():
     from sqlalchemy import create_engine
 
-    host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    user = os.environ.get("POSTGRES_USER", "aqi_user")
-    password = os.environ.get("POSTGRES_PASSWORD", "aqi_password")
-    db = os.environ.get("POSTGRES_DB", "aqi_warehouse")
+    host = os.getenv("WAREHOUSE_POSTGRES_HOST", "warehouse-db")
+    port = os.getenv("WAREHOUSE_POSTGRES_PORT", "5432")
+    user = os.getenv("WAREHOUSE_POSTGRES_USER")
+    password = os.getenv("WAREHOUSE_POSTGRES_PASSWORD")
+    db = os.getenv("WAREHOUSE_POSTGRES_DB")
     url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
     return create_engine(url)
 

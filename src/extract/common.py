@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import openmeteo_requests
 import requests_cache
@@ -19,16 +20,35 @@ HOURLY_VARIABLES = [
     "us_aqi",
 ]
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+# Répertoire data du projet
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+
+OUTPUT_DIR = DATA_DIR
 
 
 def build_client() -> openmeteo_requests.Client:
-    cache_session = requests_cache.CachedSession(".cache", expire_after=3600)
-    retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+    cache_dir = DATA_DIR / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    cache_session = requests_cache.CachedSession(
+        str(cache_dir / "openmeteo_cache"),
+        expire_after=3600,
+    )
+
+    retry_session = retry(
+        cache_session,
+        retries=5,
+        backoff_factor=0.2,
+    )
+
     return openmeteo_requests.Client(session=retry_session)
 
 
-def find_city(cities: list[City], latitude: float, longitude: float) -> City | None:
+def find_city(
+    cities: list[City],
+    latitude: float,
+    longitude: float,
+) -> City | None:
     for city in cities:
         if city.match_coordinates(latitude, longitude):
             return city
@@ -36,6 +56,6 @@ def find_city(cities: list[City], latitude: float, longitude: float) -> City | N
 
 
 def resolve_output_dir(output_dir: str | None = None) -> str:
-    out_dir = output_dir or OUTPUT_DIR
-    os.makedirs(out_dir, exist_ok=True)
-    return out_dir
+    out_dir = Path(output_dir) if output_dir else OUTPUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return str(out_dir)
