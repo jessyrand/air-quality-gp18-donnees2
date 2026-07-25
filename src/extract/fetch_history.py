@@ -90,7 +90,7 @@ def main():
 
     responses = fetch_history_hourly_aqi(
         cities=CITIES,
-        start="2026-07-01",
+        start="2026-01-01",
         end=datetime.now().strftime("%Y-%m-%d"),
     )
 
