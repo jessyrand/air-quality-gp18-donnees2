@@ -1,0 +1,38 @@
+name: Air Quality Pipeline
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 * * * *"
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run fetch_last
+        run: uv run python -m src.extract.fetch_last
+
+      - name: Build clean dataset
+        run: uv run python -m src.transform.build_clean
+
+      - name: Build warehouse
+        run: uv run python -m src.transform.build_warehouse

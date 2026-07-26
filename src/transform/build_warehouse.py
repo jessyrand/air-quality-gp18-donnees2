@@ -8,9 +8,12 @@ from ..extract.common import HOURLY_VARIABLES
 from ..model.city import City
 from ..model.city import CITIES
 
+from sqlalchemy import MetaData, Table
+from sqlalchemy.dialects.postgresql import insert
+
 load_dotenv()
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
 CLEAN_FILE = DATA_DIR / "clean" / "clean.csv"
 
 OUTPUT_DIR = DATA_DIR / "warehouse"
@@ -118,40 +121,87 @@ def export_warehouse(
 def get_engine():
     from sqlalchemy import create_engine
 
-    host = os.getenv("WAREHOUSE_POSTGRES_HOST", "warehouse-db")
-    port = os.getenv("WAREHOUSE_POSTGRES_PORT", "5432")
-    user = os.getenv("WAREHOUSE_POSTGRES_USER")
-    password = os.getenv("WAREHOUSE_POSTGRES_PASSWORD")
-    db = os.getenv("WAREHOUSE_POSTGRES_DB")
-    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
-    return create_engine(url)
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL environment variable is not defined."
+        )
+
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace(
+            "postgresql://",
+            "postgresql+psycopg2://",
+            1,
+        )
+
+    return create_engine(
+        database_url,
+        pool_pre_ping=True,
+    )
 
 
-def load_to_postgres(dim_city: pd.DataFrame, dim_time: pd.DataFrame, fact: pd.DataFrame, engine=None) -> None:
+def load_to_postgres(
+    dim_city: pd.DataFrame,
+    dim_time: pd.DataFrame,
+    fact: pd.DataFrame,
+    engine=None,
+    full_refresh: bool = False,
+) -> None:
     from sqlalchemy import text
 
     engine = engine or get_engine()
 
-    with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE fact_aqi, dim_time, dim_city RESTART IDENTITY CASCADE"))
+    initialize_database(engine)
 
-    dim_city.to_sql("dim_city", engine, if_exists="append", index=False)
-    dim_time.to_sql("dim_time", engine, if_exists="append", index=False)
-    fact.to_sql("fact_aqi", engine, if_exists="append", index=False)
+    if full_refresh:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    TRUNCATE TABLE
+                        fact_aqi,
+                        dim_time,
+                        dim_city
+                    RESTART IDENTITY CASCADE
+                    """
+                )
+            )
 
-    with engine.begin() as conn:
-        for table, pk in [("dim_city", "city_id"), ("dim_time", "time_id"), ("fact_aqi", "fact_id")]:
-            conn.execute(text(
-                f"SELECT setval(pg_get_serial_sequence('{table}', '{pk}'), COALESCE(MAX({pk}), 1)) FROM {table}"
-            ))
+    upsert_dataframe(
+        "dim_city",
+        dim_city,
+        engine,
+        ["city_name"],
+    )
 
-    print(f"[warehouse] {len(dim_city)} cities, {len(dim_time)} timestamps, {len(fact)} facts loaded into Postgres")
+    upsert_dataframe(
+        "dim_time",
+        dim_time,
+        engine,
+        ["full_datetime"],
+    )
+
+    upsert_dataframe(
+        "fact_aqi",
+        fact,
+        engine,
+        ["city_id", "time_id"],
+    )
+
+    print(
+        f"[warehouse] Loaded "
+        f"{len(dim_city)} cities, "
+        f"{len(dim_time)} timestamps, "
+        f"{len(fact)} facts"
+    )
 
 
 def build_warehouse(
     clean_df: pd.DataFrame,
     cities: list[City],
     to_postgres: bool = True,
+    full_refresh: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
     dim_city = build_dim_city(cities)
@@ -161,8 +211,56 @@ def build_warehouse(
     check_coherence(fact, dim_city, dim_time)
     export_warehouse(dim_city, dim_time, fact)
     if to_postgres:
-        load_to_postgres(dim_city, dim_time, fact)
+        load_to_postgres(
+            dim_city,
+            dim_time,
+            fact,
+            full_refresh=full_refresh,
+        )
     return dim_city, dim_time, fact
+
+def initialize_database(engine=None) -> None:
+    from sqlalchemy import text
+
+    engine = engine or get_engine()
+
+    init_file = Path(__file__).parent.parent.parent / "db" / "init.sql"
+
+    if not init_file.exists():
+        raise FileNotFoundError(f"{init_file} not found")
+
+    with open(init_file, "r", encoding="utf-8") as f:
+        sql = f.read()
+
+    with engine.begin() as conn:
+        conn.execute(text(sql))
+
+    print("[warehouse] Database schema initialized")
+
+def upsert_dataframe(
+    table_name: str,
+    df: pd.DataFrame,
+    engine,
+    conflict_columns: list[str],
+) -> None:
+    """
+    Insert rows into PostgreSQL while ignoring duplicates.
+    """
+
+    if df.empty:
+        return
+
+    metadata = MetaData()
+    table = Table(table_name, metadata, autoload_with=engine)
+
+    records = df.to_dict(orient="records")
+
+    with engine.begin() as conn:
+        stmt = insert(table).values(records)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=conflict_columns
+        )
+        conn.execute(stmt)
 
 def main():
     if not CLEAN_FILE.exists():
@@ -178,6 +276,7 @@ def main():
     build_warehouse(
         clean_df=clean_df,
         cities=CITIES,
+        full_refresh=False,
     )
 
 
