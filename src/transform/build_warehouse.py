@@ -176,6 +176,7 @@ def build_warehouse(
     engine = get_engine()
 
     initialize_database(engine)
+    synchronize_sequences(engine)
 
     if full_refresh:
         from sqlalchemy import text
@@ -269,6 +270,43 @@ def initialize_database(engine=None) -> None:
         conn.execute(text(sql))
 
     print("[warehouse] Database schema initialized")
+
+def synchronize_sequences(engine) -> None:
+    """
+    Synchronize PostgreSQL SERIAL sequences with the current maximum IDs.
+    """
+
+    from sqlalchemy import text
+
+    statements = [
+        """
+        SELECT setval(
+            pg_get_serial_sequence('dim_city', 'city_id'),
+            COALESCE((SELECT MAX(city_id) FROM dim_city), 1),
+            true
+        )
+        """,
+        """
+        SELECT setval(
+            pg_get_serial_sequence('dim_time', 'time_id'),
+            COALESCE((SELECT MAX(time_id) FROM dim_time), 1),
+            true
+        )
+        """,
+        """
+        SELECT setval(
+            pg_get_serial_sequence('fact_aqi', 'fact_id'),
+            COALESCE((SELECT MAX(fact_id) FROM fact_aqi), 1),
+            true
+        )
+        """,
+    ]
+
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))
+
+    print("[warehouse] PostgreSQL sequences synchronized")
 
 def upsert_dataframe(
     table_name: str,
