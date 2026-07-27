@@ -77,7 +77,6 @@ def build_fact_aqi(clean_df: pd.DataFrame, dim_city: pd.DataFrame, dim_time: pd.
         print("[warehouse] WARNING: no measure column found, check HOURLY_VARIABLES in common.py")
 
     fact = fact[["city_id", "time_id"] + measure_cols].copy()
-    fact.insert(0, "fact_id", range(1, len(fact) + 1))
 
     missing_city = int(fact["city_id"].isna().sum())
     missing_time = int(fact["time_id"].isna().sum())
@@ -138,21 +137,49 @@ def get_engine():
         pool_pre_ping=True,
     )
 
+def read_dimension(
+    table_name: str,
+    columns: list[str],
+    engine=None,
+) -> pd.DataFrame:
+    engine = engine or get_engine()
+
+    query = f"SELECT {', '.join(columns)} FROM {table_name}"
+
+    return pd.read_sql(query, engine)
 
 def load_to_postgres(
-    dim_city: pd.DataFrame,
-    dim_time: pd.DataFrame,
     fact: pd.DataFrame,
-    engine=None,
-    full_refresh: bool = False,
+    engine,
 ) -> None:
-    from sqlalchemy import text
+    """
+    Load the fact table into PostgreSQL.
+    Dimensions must already exist.
+    """
 
-    engine = engine or get_engine()
+    upsert_dataframe(
+        "fact_aqi",
+        fact,
+        engine,
+        ["city_id", "time_id"],
+    )
+
+    print(f"[warehouse] Loaded {len(fact)} facts")
+
+def build_warehouse(
+    clean_df: pd.DataFrame,
+    cities: list[City],
+    to_postgres: bool = True,
+    full_refresh: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+
+    engine = get_engine()
 
     initialize_database(engine)
 
     if full_refresh:
+        from sqlalchemy import text
+
         with engine.begin() as conn:
             conn.execute(
                 text(
@@ -166,6 +193,11 @@ def load_to_postgres(
                 )
             )
 
+    # ---------- Build dimensions ----------
+    dim_city = build_dim_city(cities)
+    dim_time = build_dim_time(clean_df)
+
+    # ---------- Insert dimensions ----------
     upsert_dataframe(
         "dim_city",
         dim_city,
@@ -180,41 +212,44 @@ def load_to_postgres(
         ["full_datetime"],
     )
 
-    upsert_dataframe(
-        "fact_aqi",
-        fact,
+    # ---------- Reload generated surrogate keys ----------
+    dim_city = read_dimension(
+        "dim_city",
+        ["city_id", "city_name"],
         engine,
-        ["city_id", "time_id"],
     )
 
-    print(
-        f"[warehouse] Loaded "
-        f"{len(dim_city)} cities, "
-        f"{len(dim_time)} timestamps, "
-        f"{len(fact)} facts"
+    dim_time = read_dimension(
+        "dim_time",
+        ["time_id", "full_datetime"],
+        engine,
     )
 
+    # ---------- Build fact ----------
+    fact = build_fact_aqi(
+        clean_df,
+        dim_city,
+        dim_time,
+    )
 
-def build_warehouse(
-    clean_df: pd.DataFrame,
-    cities: list[City],
-    to_postgres: bool = True,
-    full_refresh: bool = False,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    check_coherence(
+        fact,
+        dim_city,
+        dim_time,
+    )
 
-    dim_city = build_dim_city(cities)
-    dim_time = build_dim_time(clean_df)
-    fact = build_fact_aqi(clean_df, dim_city, dim_time)
+    export_warehouse(
+        dim_city,
+        dim_time,
+        fact,
+    )
 
-    check_coherence(fact, dim_city, dim_time)
-    export_warehouse(dim_city, dim_time, fact)
     if to_postgres:
         load_to_postgres(
-            dim_city,
-            dim_time,
-            fact,
-            full_refresh=full_refresh,
+            fact=fact,
+            engine=engine,
         )
+
     return dim_city, dim_time, fact
 
 def initialize_database(engine=None) -> None:
