@@ -33,7 +33,6 @@ def build_dim_city(cities: list[City]) -> pd.DataFrame:
     ]
 
     dim_city = pd.DataFrame(rows)
-    dim_city.insert(0, "city_id", range(1, len(dim_city) + 1))
     return dim_city
 
 
@@ -42,7 +41,6 @@ def build_dim_time(clean_df: pd.DataFrame) -> pd.DataFrame:
     unique_dates = pd.Series(unique_dates).sort_values().reset_index(drop=True)
 
     dim_time = pd.DataFrame({"full_datetime": unique_dates})
-    dim_time.insert(0, "time_id", range(1, len(dim_time) + 1))
     dim_time["date"] = dim_time["full_datetime"].dt.date
     dim_time["hour"] = dim_time["full_datetime"].dt.hour
     dim_time["day_of_week"] = dim_time["full_datetime"].dt.day_name()
