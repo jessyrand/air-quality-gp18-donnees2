@@ -33,7 +33,6 @@ def build_dim_city(cities: list[City]) -> pd.DataFrame:
     ]
 
     dim_city = pd.DataFrame(rows)
-    dim_city.insert(0, "city_id", range(1, len(dim_city) + 1))
     return dim_city
 
 
@@ -42,7 +41,6 @@ def build_dim_time(clean_df: pd.DataFrame) -> pd.DataFrame:
     unique_dates = pd.Series(unique_dates).sort_values().reset_index(drop=True)
 
     dim_time = pd.DataFrame({"full_datetime": unique_dates})
-    dim_time.insert(0, "time_id", range(1, len(dim_time) + 1))
     dim_time["date"] = dim_time["full_datetime"].dt.date
     dim_time["hour"] = dim_time["full_datetime"].dt.hour
     dim_time["day_of_week"] = dim_time["full_datetime"].dt.day_name()
@@ -79,7 +77,6 @@ def build_fact_aqi(clean_df: pd.DataFrame, dim_city: pd.DataFrame, dim_time: pd.
         print("[warehouse] WARNING: no measure column found, check HOURLY_VARIABLES in common.py")
 
     fact = fact[["city_id", "time_id"] + measure_cols].copy()
-    fact.insert(0, "fact_id", range(1, len(fact) + 1))
 
     missing_city = int(fact["city_id"].isna().sum())
     missing_time = int(fact["time_id"].isna().sum())
@@ -140,21 +137,50 @@ def get_engine():
         pool_pre_ping=True,
     )
 
-
-def load_to_postgres(
-    dim_city: pd.DataFrame,
-    dim_time: pd.DataFrame,
-    fact: pd.DataFrame,
+def read_dimension(
+    table_name: str,
+    columns: list[str],
     engine=None,
-    full_refresh: bool = False,
-) -> None:
-    from sqlalchemy import text
-
+) -> pd.DataFrame:
     engine = engine or get_engine()
 
+    query = f"SELECT {', '.join(columns)} FROM {table_name}"
+
+    return pd.read_sql(query, engine)
+
+def load_to_postgres(
+    fact: pd.DataFrame,
+    engine,
+) -> None:
+    """
+    Load the fact table into PostgreSQL.
+    Dimensions must already exist.
+    """
+
+    upsert_dataframe(
+        "fact_aqi",
+        fact,
+        engine,
+        ["city_id", "time_id"],
+    )
+
+    print(f"[warehouse] Loaded {len(fact)} facts")
+
+def build_warehouse(
+    clean_df: pd.DataFrame,
+    cities: list[City],
+    to_postgres: bool = True,
+    full_refresh: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+
+    engine = get_engine()
+
     initialize_database(engine)
+    synchronize_sequences(engine)
 
     if full_refresh:
+        from sqlalchemy import text
+
         with engine.begin() as conn:
             conn.execute(
                 text(
@@ -168,6 +194,11 @@ def load_to_postgres(
                 )
             )
 
+    # ---------- Build dimensions ----------
+    dim_city = build_dim_city(cities)
+    dim_time = build_dim_time(clean_df)
+
+    # ---------- Insert dimensions ----------
     upsert_dataframe(
         "dim_city",
         dim_city,
@@ -182,41 +213,44 @@ def load_to_postgres(
         ["full_datetime"],
     )
 
-    upsert_dataframe(
-        "fact_aqi",
-        fact,
+    # ---------- Reload generated surrogate keys ----------
+    dim_city = read_dimension(
+        "dim_city",
+        ["city_id", "city_name"],
         engine,
-        ["city_id", "time_id"],
     )
 
-    print(
-        f"[warehouse] Loaded "
-        f"{len(dim_city)} cities, "
-        f"{len(dim_time)} timestamps, "
-        f"{len(fact)} facts"
+    dim_time = read_dimension(
+        "dim_time",
+        ["time_id", "full_datetime"],
+        engine,
     )
 
+    # ---------- Build fact ----------
+    fact = build_fact_aqi(
+        clean_df,
+        dim_city,
+        dim_time,
+    )
 
-def build_warehouse(
-    clean_df: pd.DataFrame,
-    cities: list[City],
-    to_postgres: bool = True,
-    full_refresh: bool = False,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    check_coherence(
+        fact,
+        dim_city,
+        dim_time,
+    )
 
-    dim_city = build_dim_city(cities)
-    dim_time = build_dim_time(clean_df)
-    fact = build_fact_aqi(clean_df, dim_city, dim_time)
+    export_warehouse(
+        dim_city,
+        dim_time,
+        fact,
+    )
 
-    check_coherence(fact, dim_city, dim_time)
-    export_warehouse(dim_city, dim_time, fact)
     if to_postgres:
         load_to_postgres(
-            dim_city,
-            dim_time,
-            fact,
-            full_refresh=full_refresh,
+            fact=fact,
+            engine=engine,
         )
+
     return dim_city, dim_time, fact
 
 def initialize_database(engine=None) -> None:
@@ -236,6 +270,43 @@ def initialize_database(engine=None) -> None:
         conn.execute(text(sql))
 
     print("[warehouse] Database schema initialized")
+
+def synchronize_sequences(engine) -> None:
+    """
+    Synchronize PostgreSQL SERIAL sequences with the current maximum IDs.
+    """
+
+    from sqlalchemy import text
+
+    statements = [
+        """
+        SELECT setval(
+            pg_get_serial_sequence('dim_city', 'city_id'),
+            COALESCE((SELECT MAX(city_id) FROM dim_city), 1),
+            true
+        )
+        """,
+        """
+        SELECT setval(
+            pg_get_serial_sequence('dim_time', 'time_id'),
+            COALESCE((SELECT MAX(time_id) FROM dim_time), 1),
+            true
+        )
+        """,
+        """
+        SELECT setval(
+            pg_get_serial_sequence('fact_aqi', 'fact_id'),
+            COALESCE((SELECT MAX(fact_id) FROM fact_aqi), 1),
+            true
+        )
+        """,
+    ]
+
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))
+
+    print("[warehouse] PostgreSQL sequences synchronized")
 
 def upsert_dataframe(
     table_name: str,
